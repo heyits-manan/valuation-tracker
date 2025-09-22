@@ -1,0 +1,36 @@
+export type ReportType = 'Final Report' | 'Interim Report'
+
+export type PaymentStatus = 'Paid' | 'Not Paid'
+
+export interface ValuationRecord {
+  hecRefNo: string
+  date: string
+  clientName: string
+  address: string
+  contactNo: string
+  typeOfReport: ReportType
+  bankName: string
+  branch: string
+  fmvAmount: number
+  dvAmount: number
+  billAmount: number
+  advancePayment: number
+  paymentStatus: PaymentStatus
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Filters {
+  clientName: string
+  bankName: string
+  from?: string
+  to?: string
+}
+
+export interface SortState {
+  key: keyof ValuationRecord
+  dir: 'asc' | 'desc'
+}
+
+export const REPORT_TYPES: ReportType[] = ['Final Report', 'Interim Report']
+export const PAYMENT_STATUS_OPTIONS: PaymentStatus[] = ['Paid', 'Not Paid']
