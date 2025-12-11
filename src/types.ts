@@ -1,4 +1,10 @@
-export type ReportType = 'Final Report' | 'Interim Report'
+export type ReportType =
+  | 'Preliminary valuation'
+  | 'Revaluation'
+  | 'Reconfirmation'
+  | 'Building estimation/valuation'
+  | 'Final Report'
+  | 'Interim Report'
 
 export type PaymentStatus = 'Paid' | 'Not Paid'
 
@@ -15,6 +21,8 @@ export interface ValuationRecord {
   dvAmount: number
   billAmount: number
   advancePayment: number
+  paidAmount: number
+
   paymentStatus: PaymentStatus
   createdAt: string
   updatedAt: string
@@ -32,5 +40,12 @@ export interface SortState {
   dir: 'asc' | 'desc'
 }
 
-export const REPORT_TYPES: ReportType[] = ['Final Report', 'Interim Report']
+export const REPORT_TYPES: ReportType[] = [
+  'Preliminary valuation',
+  'Revaluation',
+  'Reconfirmation',
+  'Building estimation/valuation',
+  'Final Report',
+  'Interim Report',
+]
 export const PAYMENT_STATUS_OPTIONS: PaymentStatus[] = ['Paid', 'Not Paid']

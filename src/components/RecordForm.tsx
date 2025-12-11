@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { ChangeEvent } from 'react'
-import Tooltip from './Tooltip'
 import { PAYMENT_STATUS_OPTIONS, REPORT_TYPES } from '../types'
 import type { ValuationRecord } from '../types'
 import { formatDDMMYYYY, parseDDMMYYYY } from '../utils/date'
 import { formatAmount, toNumber } from '../utils/number'
+import { PlusIcon, ArrowPathIcon, ArchiveBoxArrowDownIcon } from '@heroicons/react/24/outline'
 
 type FormValues = Omit<ValuationRecord, 'createdAt' | 'updatedAt'>
 
@@ -20,54 +20,6 @@ interface RecordFormProps {
   onBackup: () => void | Promise<void>
 }
 
-const tooltipCopy: Record<keyof FormValues, string> = {
-  hecRefNo: 'Enter the unique HEC reference number',
-  date: 'Enter date in DD/MM/YYYY format',
-  clientName: 'Enter the full name of the client',
-  address: 'Enter the complete address',
-  contactNo: 'Enter a valid contact number',
-  typeOfReport: 'Select the type of valuation report',
-  bankName: 'Enter the name of the bank',
-  branch: 'Enter the bank branch name',
-  fmvAmount: 'Enter the Fair Market Value amount',
-  dvAmount: 'Enter the Distress Value amount',
-  billAmount: 'Enter the total bill amount',
-  advancePayment: 'Enter any advance payment received',
-  paymentStatus: 'Select Paid if the bill is settled, otherwise choose Not Paid',
-}
-
-const labelMap: Record<keyof FormState, string> = {
-  hecRefNo: 'HEC Reference No',
-  date: 'Date',
-  clientName: 'Client Name',
-  address: 'Address',
-  contactNo: 'Contact No',
-  typeOfReport: 'Type of Report',
-  bankName: 'Bank Name',
-  branch: 'Branch',
-  fmvAmount: 'FMV Amount',
-  dvAmount: 'DV Amount',
-  billAmount: 'Bill Amount',
-  advancePayment: 'Advance Payment',
-  paymentStatus: 'Payment Status',
-}
-
-const fieldOrder: (keyof FormState)[] = [
-  'hecRefNo',
-  'date',
-  'clientName',
-  'address',
-  'contactNo',
-  'typeOfReport',
-  'bankName',
-  'branch',
-  'fmvAmount',
-  'dvAmount',
-  'billAmount',
-  'advancePayment',
-  'paymentStatus',
-]
-
 const makeInitialState = (): FormState => ({
   hecRefNo: '',
   date: '',
@@ -81,6 +33,7 @@ const makeInitialState = (): FormState => ({
   dvAmount: '',
   billAmount: '',
   advancePayment: '',
+  paidAmount: '',
   paymentStatus: 'Not Paid',
 })
 
@@ -108,6 +61,7 @@ const RecordForm = ({ editingRecord, onAdd, onUpdate, onClear, onBackup }: Recor
       dvAmount: formatAmount(editingRecord.dvAmount),
       billAmount: formatAmount(editingRecord.billAmount),
       advancePayment: formatAmount(editingRecord.advancePayment),
+      paidAmount: formatAmount(editingRecord.paidAmount),
       paymentStatus: editingRecord.paymentStatus ?? 'Not Paid',
     })
     setErrors({})
@@ -117,7 +71,20 @@ const RecordForm = ({ editingRecord, onAdd, onUpdate, onClear, onBackup }: Recor
     field: keyof FormState,
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
-    const { value } = event.target
+    let { value } = event.target
+
+    // Date Masking
+    if (field === 'date') {
+      const nums = value.replace(/\D/g, '')
+      if (nums.length <= 2) {
+        value = nums
+      } else if (nums.length <= 4) {
+        value = `${nums.slice(0, 2)}/${nums.slice(2)}`
+      } else {
+        value = `${nums.slice(0, 2)}/${nums.slice(2, 4)}/${nums.slice(4, 8)}`
+      }
+    }
+
     setValues((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -159,6 +126,7 @@ const RecordForm = ({ editingRecord, onAdd, onUpdate, onClear, onBackup }: Recor
     dvAmount: toNumber(values.dvAmount),
     billAmount: toNumber(values.billAmount),
     advancePayment: toNumber(values.advancePayment),
+    paidAmount: toNumber(values.paidAmount),
     paymentStatus: values.paymentStatus ?? 'Not Paid',
   })
 
@@ -181,86 +149,221 @@ const RecordForm = ({ editingRecord, onAdd, onUpdate, onClear, onBackup }: Recor
     onClear()
   }
 
+  const bill = toNumber(values.billAmount)
+  const paid = toNumber(values.paidAmount)
+  const advance = toNumber(values.advancePayment)
+  const credit = Math.max(0, bill - paid - advance)
+  const totalPaid = paid + advance
+
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow">
-      <h2 className="mb-4 text-lg font-semibold text-slate-100">Valuation Details</h2>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {fieldOrder.map((field) => {
-          const isNumberField = ['fmvAmount', 'dvAmount', 'billAmount', 'advancePayment'].includes(field)
-          return (
-            <div key={field} className="flex flex-col gap-1">
-              <label className="flex items-center text-sm font-medium text-slate-200">
-                <span>{labelMap[field]}</span>
-                <Tooltip content={tooltipCopy[field]} />
-              </label>
-              {field === 'typeOfReport' ? (
-                <select
-                  value={values.typeOfReport}
-                  onChange={(event) => handleChange(field, event)}
-                  className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  {REPORT_TYPES.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              ) : field === 'paymentStatus' ? (
-                <select
-                  value={values.paymentStatus}
-                  onChange={(event) => handleChange(field, event)}
-                  className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  {PAYMENT_STATUS_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={values[field] as string}
-                  onChange={(event) => handleChange(field, event)}
-                  onBlur={isNumberField ? () => handleNumberBlur(field) : undefined}
-                  placeholder={field === 'date' ? 'DD/MM/YYYY' : undefined}
-                  aria-invalid={errors[field] ? 'true' : 'false'}
-                  className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              )}
-              {errors[field] ? <span className="text-xs text-red-400">{errors[field]}</span> : null}
-            </div>
-          )
-        })}
+    <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 shadow-xl backdrop-blur-sm">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-lg font-semibold text-slate-100">
+          {editingRecord ? 'Edit Record' : 'New Valuation Record'}
+        </h2>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleClear}
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
+          >
+            Clear Form
+          </button>
+        </div>
       </div>
-      <div className="mt-6 flex flex-wrap gap-3">
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+
+        {/* Section 1: Basic Info */}
+        <div className="space-y-4 rounded-lg bg-slate-900/50 p-4 border border-slate-800/50">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 mb-3">Project Details</h3>
+          <FormField label="HEC Reference No" error={errors.hecRefNo}>
+            <input
+              type="text"
+              value={values.hecRefNo}
+              onChange={(e) => handleChange('hecRefNo', e)}
+              placeholder="HEC-082-083-2500"
+              className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 placeholder-slate-600"
+            />
+          </FormField>
+          <FormField label="Date" error={errors.date}>
+            <input
+              type="text"
+              value={values.date}
+              onChange={(e) => handleChange('date', e)}
+              placeholder="DD/MM/YYYY"
+              maxLength={10}
+              className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 placeholder-slate-600"
+            />
+          </FormField>
+          <FormField label="Type of Report">
+            <select
+              value={values.typeOfReport}
+              onChange={(e) => handleChange('typeOfReport', e)}
+              className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            >
+              {REPORT_TYPES.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </FormField>
+        </div>
+
+        {/* Section 2: Client & Bank */}
+        <div className="space-y-4 rounded-lg bg-slate-900/50 p-4 border border-slate-800/50">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 mb-3">Client & Bank</h3>
+          <FormField label="Client Name" error={errors.clientName}>
+            <input
+              type="text"
+              value={values.clientName}
+              onChange={(e) => handleChange('clientName', e)}
+              className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            />
+          </FormField>
+          <FormField label="Address">
+            <input
+              type="text"
+              value={values.address}
+              onChange={(e) => handleChange('address', e)}
+              className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            />
+          </FormField>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Bank Name">
+              <input
+                type="text"
+                value={values.bankName}
+                onChange={(e) => handleChange('bankName', e)}
+                className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              />
+            </FormField>
+            <FormField label="Branch">
+              <input
+                type="text"
+                value={values.branch}
+                onChange={(e) => handleChange('branch', e)}
+                className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              />
+            </FormField>
+          </div>
+          <FormField label="Contact No">
+            <input
+              type="text"
+              value={values.contactNo}
+              onChange={(e) => handleChange('contactNo', e)}
+              className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            />
+          </FormField>
+        </div>
+
+        {/* Section 3: Value & Payment */}
+        <div className="space-y-4 rounded-lg bg-slate-900/50 p-4 border border-slate-800/50">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 mb-3">Financials</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="FMV Amount">
+              <input
+                type="text"
+                value={values.fmvAmount}
+                onChange={(e) => handleChange('fmvAmount', e)}
+                onBlur={() => handleNumberBlur('fmvAmount')}
+                className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-right tabular-nums"
+              />
+            </FormField>
+            <FormField label="DV Amount">
+              <input
+                type="text"
+                value={values.dvAmount}
+                onChange={(e) => handleChange('dvAmount', e)}
+                onBlur={() => handleNumberBlur('dvAmount')}
+                className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-right tabular-nums"
+              />
+            </FormField>
+          </div>
+          <div className="h-px bg-slate-800 my-2"></div>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Bill Amount">
+              <input
+                type="text"
+                value={values.billAmount}
+                onChange={(e) => handleChange('billAmount', e)}
+                onBlur={() => handleNumberBlur('billAmount')}
+                className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-right tabular-nums font-medium text-indigo-300"
+              />
+            </FormField>
+            <FormField label="Payment Status">
+              <select
+                value={values.paymentStatus}
+                onChange={(e) => handleChange('paymentStatus', e)}
+                className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              >
+                {PAYMENT_STATUS_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </FormField>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Advance">
+              <input
+                type="text"
+                value={values.advancePayment}
+                onChange={(e) => handleChange('advancePayment', e)}
+                onBlur={() => handleNumberBlur('advancePayment')}
+                className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-right tabular-nums"
+              />
+            </FormField>
+            <FormField label="Paid Amount">
+              <input
+                type="text"
+                value={values.paidAmount}
+                onChange={(e) => handleChange('paidAmount', e)}
+                onBlur={() => handleNumberBlur('paidAmount')}
+                className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-right tabular-nums"
+              />
+            </FormField>
+          </div>
+          <div className="mt-2 rounded bg-slate-950 p-3 text-xs space-y-1 border border-slate-800">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Total Paid:</span>
+              <span className="text-emerald-400 font-mono">{formatAmount(totalPaid)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Remaining Credit:</span>
+              <span className="text-red-400 font-mono">{formatAmount(credit)}</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div className="mt-8 flex flex-wrap gap-3 border-t border-slate-800/50 pt-6">
         <button
           type="button"
-          onClick={handleAdd}
-          className="rounded bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-indigo-500"
+          onClick={editingRecord ? handleUpdate : handleAdd}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow-lg transition-all active:scale-95 ${editingRecord
+            ? 'bg-emerald-600 shadow-emerald-500/20 hover:bg-emerald-500'
+            : 'bg-indigo-600 shadow-indigo-500/20 hover:bg-indigo-500'
+            }`}
         >
-          Add Record
+          {editingRecord ? (
+            <>
+              <ArrowPathIcon className="h-4 w-4" />
+              Update Record
+            </>
+          ) : (
+            <>
+              <PlusIcon className="h-4 w-4" />
+              Add Record
+            </>
+          )}
         </button>
-        <button
-          type="button"
-          onClick={handleUpdate}
-          disabled={!editingRecord}
-          className="rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-900 disabled:text-emerald-300"
-        >
-          Update Record
-        </button>
-        <button
-          type="button"
-          onClick={handleClear}
-          className="rounded bg-slate-700 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-600"
-        >
-          Clear Form
-        </button>
+
         <button
           type="button"
           onClick={onBackup}
-          className="rounded border border-indigo-500 px-3 py-2 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500 hover:text-white"
+          className="ml-auto flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
         >
+          <ArchiveBoxArrowDownIcon className="h-4 w-4" />
           Backup Data
         </button>
       </div>
@@ -268,5 +371,14 @@ const RecordForm = ({ editingRecord, onAdd, onUpdate, onClear, onBackup }: Recor
   )
 }
 
+const FormField = ({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) => (
+  <div className="flex flex-col gap-1.5">
+    <label className="text-xs font-medium text-slate-400">{label}</label>
+    {children}
+    {error && <span className="text-[10px] text-rose-500 font-medium">{error}</span>}
+  </div>
+)
+
 export type { FormValues as RecordFormValues }
 export default RecordForm
+
