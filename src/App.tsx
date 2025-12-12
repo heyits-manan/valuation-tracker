@@ -5,9 +5,10 @@ import RecordsTable from './components/RecordsTable'
 import SummaryBar from './components/SummaryBar'
 import Filters from './components/Filters'
 import Layout from './components/Layout'
-import SheetSelectionModal from './components/SheetSelectionModal'
+import SheetTabs from './components/SheetTabs'
 import type {
   Filters as FiltersValue,
+  SheetData,
   SortState,
   ValuationRecord,
 } from './types'
@@ -15,7 +16,7 @@ import { formatDDMMYYYY, inRange, parseDDMMYYYY, toISO } from './utils/date'
 import { format } from 'date-fns'
 import * as XLSX from 'xlsx'
 
-const initialRecords: ValuationRecord[] = []
+const DEFAULT_SHEET = 'Records'
 
 const initialFilters: FiltersValue = {
   clientName: '',
@@ -25,7 +26,8 @@ const initialFilters: FiltersValue = {
 }
 
 const App = () => {
-  const [records, setRecords] = useState<ValuationRecord[]>(initialRecords)
+  const [sheetData, setSheetData] = useState<SheetData>({ [DEFAULT_SHEET]: [] })
+  const [activeSheet, setActiveSheet] = useState<string>(DEFAULT_SHEET)
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined)
   const [filters, setFilters] = useState<FiltersValue>(initialFilters)
   const [sort, setSortState] = useState<SortState>({
@@ -34,18 +36,21 @@ const App = () => {
   })
   const [currentFileName, setCurrentFileName] = useState<string | null>(null)
 
-  // Sheet Selection State
-  const [sheetModalOpen, setSheetModalOpen] = useState(false)
-  const [availableSheets, setAvailableSheets] = useState<string[]>([])
-  const [pendingWorkbook, setPendingWorkbook] = useState<XLSX.WorkBook | null>(null)
-  const [pendingFileName, setPendingFileName] = useState<string | null>(null)
-
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  // Get current sheet's records
+  const records = sheetData[activeSheet] || []
+  const sheetNames = Object.keys(sheetData)
 
   const selectedRecord = useMemo(
     () => records.find((record) => record.hecRefNo === selectedId),
     [records, selectedId]
   )
+
+  // Update records for current sheet
+  const setRecords = (newRecords: ValuationRecord[]) => {
+    setSheetData((prev) => ({ ...prev, [activeSheet]: newRecords }))
+  }
 
   const normalizeDate = (value: string): string | null => {
     if (parseDDMMYYYY(value)) {
@@ -180,34 +185,38 @@ const App = () => {
   }
 
   const handleBackup = async () => {
-    if (records.length === 0) {
+    const allRecords = Object.values(sheetData).flat()
+    if (allRecords.length === 0) {
       window.alert('There are no records to back up yet.')
       return
     }
 
     const today = format(new Date(), 'yyyy-MM-dd')
-    const exportRows = records.map((record) => ({
-      hecRefNo: record.hecRefNo,
-      date: formatDDMMYYYY(record.date) || record.date,
-      clientName: record.clientName,
-      address: record.address,
-      contactNo: record.contactNo,
-      typeOfReport: record.typeOfReport,
-      bankName: record.bankName,
-      branch: record.branch,
-      fmvAmount: record.fmvAmount,
-      dvAmount: record.dvAmount,
-      billAmount: record.billAmount,
-      advancePayment: record.advancePayment,
-      paidAmount: record.paidAmount,
-      paymentStatus: record.paymentStatus,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-    }))
-
-    const worksheet = XLSX.utils.json_to_sheet(exportRows)
     const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Valuations')
+
+    // Export each sheet
+    for (const [sheetName, sheetRecords] of Object.entries(sheetData)) {
+      const exportRows = sheetRecords.map((record) => ({
+        hecRefNo: record.hecRefNo,
+        date: formatDDMMYYYY(record.date) || record.date,
+        clientName: record.clientName,
+        address: record.address,
+        contactNo: record.contactNo,
+        typeOfReport: record.typeOfReport,
+        bankName: record.bankName,
+        branch: record.branch,
+        fmvAmount: record.fmvAmount,
+        dvAmount: record.dvAmount,
+        billAmount: record.billAmount,
+        advancePayment: record.advancePayment,
+        paidAmount: record.paidAmount,
+        paymentStatus: record.paymentStatus,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+      }))
+      const worksheet = XLSX.utils.json_to_sheet(exportRows)
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
+    }
 
     const fileName = currentFileName
       ? currentFileName.replace(/\.[^/.]+$/, '') + '.xlsx'
@@ -335,10 +344,9 @@ const App = () => {
     }
   }
 
-  const mergeImportedRecords = (incoming: ValuationRecord[]) => {
+  const mergeImportedRecords = (incoming: ValuationRecord[], sheetName: string = DEFAULT_SHEET) => {
     if (incoming.length === 0) return
-    // Simply replace all existing records with the imported data
-    setRecords(incoming)
+    setSheetData((prev) => ({ ...prev, [sheetName]: incoming }))
   }
 
   const parseJsonImport = (text: string, fileName: string) => {
@@ -371,50 +379,35 @@ const App = () => {
       return
     }
 
-    // If multiple sheets, ask user to select one
-    if (workbook.SheetNames.length > 1) {
-      setAvailableSheets(workbook.SheetNames)
-      setPendingWorkbook(workbook)
-      setPendingFileName(file.name)
-      setSheetModalOpen(true)
+    // Import ALL sheets
+    const newSheetData: SheetData = {}
+    let validSheetsCount = 0
+
+    for (const sheetName of workbook.SheetNames) {
+      const worksheet = workbook.Sheets[sheetName]
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
+        defval: '',
+      })
+
+      const normalised = rows
+        .map((row) => normaliseImportedRecord(row))
+        .filter((item): item is ValuationRecord => Boolean(item))
+
+      if (normalised.length > 0) {
+        newSheetData[sheetName] = normalised
+        validSheetsCount++
+      }
+    }
+
+    if (validSheetsCount === 0) {
+      window.alert('No valid records were found in any sheet.')
       return
     }
 
-    // If single sheet, process immediately
-    processSheet(workbook, workbook.SheetNames[0], file.name)
-  }
-
-  const processSheet = (workbook: XLSX.WorkBook, sheetName: string, fileName: string) => {
-    const worksheet = workbook.Sheets[sheetName]
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
-      defval: '',
-    })
-
-    if (rows.length === 0) {
-      window.alert(`No rows were found in sheet "${sheetName}".`)
-      return
-    }
-
-    const normalised = rows
-      .map((row) => normaliseImportedRecord(row))
-      .filter((item): item is ValuationRecord => Boolean(item))
-
-    if (normalised.length === 0) {
-      window.alert('No valid records were found in the imported file.')
-      return
-    }
-
-    setCurrentFileName(fileName)
-    mergeImportedRecords(normalised)
-  }
-
-  const handleSheetSelect = (sheetName: string) => {
-    if (pendingWorkbook && pendingFileName) {
-      processSheet(pendingWorkbook, sheetName, pendingFileName)
-    }
-    setSheetModalOpen(false)
-    setPendingWorkbook(null)
-    setPendingFileName(null)
+    setSheetData(newSheetData)
+    setActiveSheet(Object.keys(newSheetData)[0])
+    setCurrentFileName(file.name)
+    setSelectedId(undefined)
   }
 
   const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -507,6 +500,16 @@ const App = () => {
           onClear={handleFiltersClear}
         />
 
+        {/* Sheet Tabs - Only shown when multiple sheets exist */}
+        <SheetTabs
+          sheetNames={sheetNames}
+          activeSheet={activeSheet}
+          onTabChange={(name) => {
+            setActiveSheet(name)
+            setSelectedId(undefined)
+          }}
+        />
+
         {/* Records Table - Full Width */}
         <RecordsTable
           rows={filteredAndSortedRecords}
@@ -515,17 +518,6 @@ const App = () => {
           setSort={(next) => setSortState(next)}
           onSelect={(record) => setSelectedId(record.hecRefNo)}
           onDelete={handleDelete}
-        />
-
-        <SheetSelectionModal
-          isOpen={sheetModalOpen}
-          sheetNames={availableSheets}
-          onSelect={handleSheetSelect}
-          onCancel={() => {
-            setSheetModalOpen(false)
-            setPendingWorkbook(null)
-            setPendingFileName(null)
-          }}
         />
       </div>
     </Layout>

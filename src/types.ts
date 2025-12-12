@@ -40,6 +40,10 @@ export interface SortState {
   dir: 'asc' | 'desc'
 }
 
+export interface SheetData {
+  [sheetName: string]: ValuationRecord[]
+}
+
 export const REPORT_TYPES: ReportType[] = [
   'Preliminary valuation',
   'Revaluation',
